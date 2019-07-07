@@ -1,0 +1,29 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Stack providing cross account access for GuardDutyRecruiter
+# Suggested StackName : guarddutyrecruiter-spoke-account
+
+Parameters:
+
+  GuardDutyRecruiterCentralAccount:
+    Description: AWS account ID where GuardDutyRecruiter is installed
+    Type: String
+    ConstraintDescription: Must be a valid AWS account ID
+
+Resources:
+
+  GuardDutyRecruiterAssumeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: guardduty-recruit-role
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: !Sub 'arn:aws:iam::${GuardDutyRecruiterCentralAccount}:root'
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonGuardDutyFullAccess 
+      Path: "/"

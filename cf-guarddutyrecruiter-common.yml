@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Common resources for GuardDuty Recruiter Batch
+# Stack Name : guarddutyrecruiter-common
+# Description : this stack creates the GuardDutyRecruiter main stack prerequisites :
+# - one ECR repository
+
+
+Parameters:
+
+  TagBlock:
+    Description: Block tag
+    Type: String
+    Default: security
+
+  TagApp:
+    Description: Application tag
+    Type: String
+    Default: guarddutyrecruiter
+
+  TagOrg:
+    Description: Organization Unit
+    Type: String
+    Default: cloudteam
+
+  GuardDutyRecruiterEcrRepoName:
+    Description: ECR name for the GuardDutyRecruiter repo
+    Type: String
+    Default: guarddutyrecruiter
+
+
+Resources:
+
+  GuardDutyRecruiterEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${GuardDutyRecruiterEcrRepoName}'
+
+Outputs:
+
+  GuardDutyRecruiterEcrRepository:
+    Description: GuardDutyRecruiter ECR repository
+    Value: !GetAtt GuardDutyRecruiterEcrRepository.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-EcrRepository"
+

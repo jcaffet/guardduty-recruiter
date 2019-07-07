@@ -1,0 +1,534 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GuardDutyRecruiter Batch
+# Name : guarddutyrecruiter-batch
+# Architectural choices :
+# - no user, no password, no key, only roles
+# - no ssh access to compute envs
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Compute Env Network'
+        Parameters: ['ComputeEnvVPC', 'ComputeEnvSubnets']
+      - Label:
+          default: 'Compute Env Cpu'
+        Parameters: ['ComputeEnvMinCpu', 'ComputeEnvDesiredCpu', 'ComputeEnvMaxCpu']
+      - Label:
+          default: 'Access to the AWS Organizations account'
+        Parameters: ['OrganizationAccount', 'OrganizationRole', 'OrganizationRoleExternalId']
+      - Label:
+          default: 'Access to the spoke accounts'
+        Parameters: ['GuardDutyRecruiterRole', 'GuardDutyRecruiterSpokeStackSet']
+
+
+Parameters:
+
+  DisplayName:
+    Description: Project name
+    Type: String
+    Default: guarddutyrecruiter
+
+  TagBlock:
+    Description: Applicative block tag
+    Type: String
+    Default: security
+
+  TagApp:
+    Description: Application tag
+    Type: String
+    Default: guarddutyrecruiter
+
+  TagOrg:
+    Description: Organization tag
+    Type: String
+    Default: cloudteam
+
+  GuardDutyRecruiterFrequency:
+    Description: define execution frequency
+    Type: String
+    Default: "cron(0 5 ? * * *)"
+
+  GuardDutyRecruiterHarversterFrequency:
+    Description: define execution frequency of the account harverster
+    Type: String
+    Default: "cron(0 3 ? * * *)"
+
+  ComputeEnvVPC:
+    Description: compute envs VPC location
+    Type: AWS::EC2::VPC::Id
+
+  ComputeEnvSubnets:
+    Description: compute envs subnets location
+    Type: List<AWS::EC2::Subnet::Id>
+
+  ComputeEnvMinCpu:
+    Description: compute envs VPC location
+    Type: Number
+    Default: 0
+
+  ComputeEnvDesiredCpu:
+    Description: compute envs VPC location
+    Type: Number
+    Default: 0
+
+  ComputeEnvMaxCpu:
+    Description: compute envs VPC location
+    Type: Number
+    Default: 2
+
+  GuardDutyRecruiterEcrImage:
+    Description: ECR image to use
+    Type: String
+
+  GuardDutyRecruiterRole:
+    Description: IAM role to assume on the spoke account to GuardDutyRecruiter
+    Type: String
+    Default: guardduty-recruit-role
+
+  GuardDutyMasterAccount:
+    Description: AWS accountId managing GuardDuty
+    Type: String
+
+  OrganizationRole:
+    Description: IAM role to assume on the Organizations account to GuardDutyRecruiter
+    Type: String
+    Default: guarddutyrecruiter-organizations-role
+
+  OrganizationRoleExternalId:
+    Description: ExternalId of role on the Organizations account for GuardDutyRecruiter
+    Type: String
+
+  OrganizationAccount:
+    Description: AWS accountId using Organizations
+    Type: String
+
+  GuardDutyRecruiterSpokeStackSet:
+    Description: Name of the StackSet distributing spoke accounts
+    Type: String
+    Default: guarddutyrecruiter-spoke-account
+
+
+Resources:
+
+  GuardDutyRecruiterComputeEnvSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for GuardDutyRecruiter Batch instances
+      VpcId: !Ref ComputeEnvVPC
+      Tags:
+      - Key: Block
+        Value: !Ref TagBlock
+      - Key: Org
+        Value: !Ref TagOrg
+      - Key: App
+        Value: !Ref TagApp
+
+  SpotFleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "spotfleet.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetRole"
+      - "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
+
+  GuardDutyRecruiterComputeEnv:
+    Type: "AWS::Batch::ComputeEnvironment"
+    Properties:
+      Type: MANAGED
+      ServiceRole: !Ref ComputeEnvironmentRole
+      ComputeResources:
+        MinvCpus: !Ref ComputeEnvMinCpu
+        MaxvCpus: !Ref ComputeEnvMaxCpu
+        DesiredvCpus: !Ref ComputeEnvDesiredCpu
+        SecurityGroupIds:
+          - !Ref GuardDutyRecruiterComputeEnvSecurityGroup
+        Subnets: !Ref ComputeEnvSubnets
+        Type: SPOT
+        BidPercentage: 50
+        SpotIamFleetRole: !Ref SpotFleetRole
+        InstanceRole: !Ref EcsInstanceProfile
+        InstanceTypes:
+          - c4
+        Tags: {Name: !Ref DisplayName, Block: !Ref TagBlock, App: !Ref TagApp, Org: !Ref TagOrg}
+      State: ENABLED
+
+  ComputeEnvironmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      RoleName: !Sub "${DisplayName}-compute-environment"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - batch.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
+
+  GuardDutyRecruiterJobQueue:
+    Type: "AWS::Batch::JobQueue"
+    Properties:
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref GuardDutyRecruiterComputeEnv
+      Priority: 1
+      JobQueueName: !Sub "${DisplayName}-queue"
+
+  EcsInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      RoleName: !Sub "${DisplayName}-ecsinstance"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+
+  EcsInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref EcsInstanceRole
+
+  GuardDutyRecruiterJobDefinition:
+    Type: "AWS::Batch::JobDefinition"
+    Properties:
+      JobDefinitionName: !Sub "${DisplayName}-job-definition"
+      Type: container
+      Parameters: {}
+      ContainerProperties:
+        Memory: 1000
+        Privileged: false
+        JobRoleArn: !Ref GuardDutyRecruiterJobRole
+        ReadonlyRootFilesystem: false
+        Vcpus: 1
+        Image: !Ref GuardDutyRecruiterEcrImage
+        Environment:
+        - Name: GUARDDUTYRECRUITER_ROLE
+          Value: !Ref GuardDutyRecruiterRole
+        - Name: GUARDDUTY_MASTER_ACCOUNT
+          Value: !Ref GuardDutyMasterAccount
+      RetryStrategy:
+        Attempts: 1
+
+  GuardDutyRecruiterJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      RoleName: !Sub "${DisplayName}-jobrole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: assumeRolePolicy
+        PolicyDocument:
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - "sts:AssumeRole"
+            Resource:
+            - !Sub "arn:aws:iam::*:role/${GuardDutyRecruiterRole}"
+
+  GuardDutyRecruiterScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: !Ref GuardDutyRecruiterFrequency
+      State: ENABLED
+      Targets:
+      - Id: "GuardDutyRecruiterJobLauncher"
+        Arn: !GetAtt GuardDutyRecruiterJobLauncherLambda.Arn
+
+  PermissionForRuleToInvokeLambda:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref GuardDutyRecruiterJobLauncherLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt GuardDutyRecruiterScheduledRule.Arn
+
+  GuardDutyRecruiterJobLauncherLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${TagApp}-lambda-invoke"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: "lambda.amazonaws.com"
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: assumeRoleOrganizationsPolicy
+        PolicyDocument:
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - "sts:AssumeRole"
+            Resource:
+            - !Sub "arn:aws:iam::${OrganizationAccount}:role/${OrganizationRole}"
+      - PolicyName: launch-jobs-allow
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            Resource:
+            - "arn:aws:logs:*:*:*"
+          - Effect: Allow
+            Action:
+            - batch:DescribeJobs
+            - batch:ListJobs
+            - batch:SubmitJob
+            Resource:
+            - "*"
+
+  GuardDutyRecruiterLambdaLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GuardDutyRecruiterJobLauncherLambda}'
+      RetentionInDays: 30
+
+  GuardDutyRecruiterJobLauncherLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Sub '${TagApp}-job-launcher'
+      Description: "Launch GuardDuty Recruiters jobs"
+      Handler: "index.lambda_handler"
+      Code:
+        ZipFile: |
+                  import os
+                  import json
+                  import boto3
+                  def lambda_handler(event, context):
+                    ORGANIZATION_ROLE = os.environ['ORGANIZATION_ROLE']
+                    ORGANIZATION_ROLE_EXTERNALID = os.environ['ORGANIZATION_ROLE_EXTERNALID']
+                    ORGANIZATION_ACCOUNT = os.environ['ORGANIZATION_ACCOUNT']
+                    session = get_session(account=ORGANIZATION_ACCOUNT, role=ORGANIZATION_ROLE, externalId=ORGANIZATION_ROLE_EXTERNALID, session_name='guarddutyrecruiter_lambda')
+                    accounts = getAllActiveAccounts(session)
+                    print("Found %s accounts to recruit." % (len(accounts)))
+
+                    client = boto3.client('batch')
+                    for account in accounts:
+                      response = client.submit_job(
+                        jobName=os.environ['JOBNAME'] + "-" + account['Id'],
+                        jobQueue=os.environ['JOBQUEUE'],
+                        jobDefinition=os.environ['JOBDEFINITION'],
+                        containerOverrides={
+                          'environment': [
+                            {
+                              'name': 'TARGET_ACCOUNT_ID',
+                              'value': account['Id']
+                            },
+                            {
+                              'name': 'TARGET_ACCOUNT_EMAIL',
+                              'value': account['Email']
+                            },
+                          ]
+                        }
+                      )
+                      print("Job %s launched with jobId %s to recruit account %s" % (response['jobName'], response['jobId'], account['Id']))
+
+                  def get_session(account=None, role=None, externalId=None, region=None, session_name='my_session'):
+                      # If the role is given : assumes a role and returns boto3 session
+                      # otherwise : returns a regular session with the current IAM user/role
+                      if role:
+                          client = boto3.client('sts')
+                          role_arn = 'arn:aws:iam::' + account + ':role/' + role
+                          response = client.assume_role(RoleArn=role_arn, ExternalId=externalId, RoleSessionName=session_name)
+                          session = boto3.Session(
+                              aws_access_key_id=response['Credentials']['AccessKeyId'],
+                              aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                              aws_session_token=response['Credentials']['SessionToken'],
+                              region_name=region)
+                          return session
+                      else:
+                          return boto3.Session()
+
+                  def getAllActiveAccounts(session):
+                      client = session.client('organizations')
+                      paginator = client.get_paginator('list_accounts')
+                      page_iterator = paginator.paginate()
+
+                      activeAccounts = []
+                      for page in page_iterator:
+                        if "Accounts" in page:
+                          for account in page[ "Accounts" ]:
+                              if account['Status'] == "ACTIVE":
+                                activeAccounts.append(account)
+                      return activeAccounts
+      Environment:
+        Variables:
+          JOBNAME: "guarddutyrecruiter-job"
+          JOBQUEUE: !Ref GuardDutyRecruiterJobQueue
+          JOBDEFINITION: !Ref GuardDutyRecruiterJobDefinition
+          ORGANIZATION_ROLE: !Ref OrganizationRole
+          ORGANIZATION_ROLE_EXTERNALID: !Ref OrganizationRoleExternalId
+          ORGANIZATION_ACCOUNT: !Ref OrganizationAccount
+      MemorySize: 128
+      Role: !GetAtt GuardDutyRecruiterJobLauncherLambdaRole.Arn
+      Runtime: "python3.7"
+      Timeout: 60
+      Tags:
+      - Key: Block
+        Value: !Ref TagBlock
+      - Key: Org
+        Value: !Ref TagOrg
+      - Key: App
+        Value: !Ref TagApp
+
+  GuardDutyRecruiterAccountHarversterScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: !Ref GuardDutyRecruiterHarversterFrequency
+      State: ENABLED
+      Targets:
+      - Id: "GuardDutyRecruiterAccountHarverster"
+        Arn: !GetAtt GuardDutyRecruiterAccountHarversterLambda.Arn
+
+  PermissionForRuleToInvokeLambdaAccountHarverster:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref GuardDutyRecruiterAccountHarversterLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt GuardDutyRecruiterAccountHarversterScheduledRule.Arn
+
+  GuardDutyRecruiterAccountHarversterLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${TagApp}-account-harverster-lambda-invoke"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: "lambda.amazonaws.com"
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: assumeRoleOrganizationsPolicy
+        PolicyDocument:
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - "sts:AssumeRole"
+            Resource:
+            - !Sub "arn:aws:iam::${OrganizationAccount}:role/${OrganizationRole}"
+      - PolicyName: launch-jobs-allow
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            Resource:
+            - "arn:aws:logs:*:*:*"
+
+  GuardDutyRecruiterAccountHarversteLambdaLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GuardDutyRecruiterAccountHarversterLambda}'
+      RetentionInDays: 30
+
+  GuardDutyRecruiterAccountHarversterLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Sub '${TagApp}-account-harverster'
+      Description: "Launch GuardDuty Account Harverster"
+      Handler: "index.lambda_handler"
+      Code:
+        ZipFile: |
+                  import os
+                  import json
+                  import boto3
+                  def lambda_handler(event, context):
+                    ORGANIZATION_ROLE = os.environ['ORGANIZATION_ROLE']
+                    ORGANIZATION_ROLE_EXTERNALID = os.environ['ORGANIZATION_ROLE_EXTERNALID']
+                    ORGANIZATION_ACCOUNT = os.environ['ORGANIZATION_ACCOUNT']
+                    STACKSET_NAME = os.environ['STACKSET_NAME']
+                    STACKSET_REGION = os.environ['STACKSET_REGION']
+                    session = get_session(account=ORGANIZATION_ACCOUNT, role=ORGANIZATION_ROLE, externalId=ORGANIZATION_ROLE_EXTERNALID, session_name='guarddutyrecruiter_lambda')
+                    accountsList = getAllActiveAccounts(session)
+                    print("Found %s StackSet instances to update." % (len(accountsList)))
+
+                    client = session.client('cloudformation')
+                    response = client.create_stack_instances(StackSetName=STACKSET_NAME,Accounts=accountsList,Regions=[STACKSET_REGION], OperationPreferences={'MaxConcurrentPercentage': 100} )
+
+                  def get_session(account=None, role=None, externalId=None, region=None, session_name='my_session'):
+                      # If the role is given : assumes a role and returns boto3 session
+                      # otherwise : returns a regular session with the current IAM user/role
+                      if role:
+                          client = boto3.client('sts')
+                          role_arn = 'arn:aws:iam::' + account + ':role/' + role
+                          response = client.assume_role(RoleArn=role_arn, ExternalId=externalId, RoleSessionName=session_name)
+                          session = boto3.Session(
+                              aws_access_key_id=response['Credentials']['AccessKeyId'],
+                              aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                              aws_session_token=response['Credentials']['SessionToken'],
+                              region_name=region)
+                          return session
+                      else:
+                          return boto3.Session()
+
+                  def getAllActiveAccounts(session):
+                      client = session.client('organizations')
+                      paginator = client.get_paginator('list_accounts')
+                      page_iterator = paginator.paginate()
+
+                      activeAccountIds = []
+                      for page in page_iterator:
+                        if "Accounts" in page:
+                          for account in page[ "Accounts" ]:
+                              if account['Status'] == "ACTIVE":
+                                activeAccountIds.append(account[ "Id" ])
+                      return activeAccountIds
+      Environment:
+        Variables:
+          ORGANIZATION_ROLE: !Ref OrganizationRole
+          ORGANIZATION_ROLE_EXTERNALID: !Ref OrganizationRoleExternalId
+          ORGANIZATION_ACCOUNT: !Ref OrganizationAccount
+          STACKSET_NAME: !Ref GuardDutyRecruiterSpokeStackSet
+          STACKSET_REGION: !Sub "${AWS::Region}"
+      MemorySize: 128
+      Role: !GetAtt GuardDutyRecruiterJobLauncherLambdaRole.Arn
+      Runtime: "python3.7"
+      Timeout: 60
+      Tags:
+      - Key: Block
+        Value: !Ref TagBlock
+      - Key: Org
+        Value: !Ref TagOrg
+      - Key: App
+        Value: !Ref TagApp

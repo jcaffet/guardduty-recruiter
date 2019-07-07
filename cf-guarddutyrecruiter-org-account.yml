@@ -1,0 +1,52 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Stack providing cross account access for GuardDutyRecruiter
+
+Parameters:
+
+  GuardDutyRecruiterAccount:
+    Description: GuardDutyRecruiter AWS accountId
+    Type: String
+    ConstraintDescription: Must be a valid AWS account ID
+
+  GuardDutyRecruiterRoleExternalId:
+    Description: GuardDutyRecruiter Role ExternalID
+    Type: String
+
+  GuardDutyRecruiterStackSetSpokeName:
+    Description: Name of the StackSet in charge of distributing spoke account assets
+    Type: String
+    Default: guarddutyrecruiter-spoke-account
+
+Resources:
+
+  GuardDutyRecruiterOrgRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: guarddutyrecruiter-organizations-role
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: !Sub 'arn:aws:iam::${GuardDutyRecruiterAccount}:root'
+          Action:
+          - sts:AssumeRole
+          Condition:
+            StringEquals:
+              "sts:ExternalId": !Sub '${GuardDutyRecruiterRoleExternalId}'
+      Policies:
+      - PolicyName: "AllowOrganizationListAccounts"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action: organizations:ListAccounts
+            Resource: '*'
+      - PolicyName: "AllowUpdateStackInstances"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action: cloudformation:CreateStackInstances
+            Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stackset/${GuardDutyRecruiterStackSetSpokeName}:*"
