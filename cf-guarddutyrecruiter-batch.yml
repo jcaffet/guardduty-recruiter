@@ -445,7 +445,7 @@ Resources:
             - "sts:AssumeRole"
             Resource:
             - !Sub "arn:aws:iam::${OrganizationAccount}:role/${OrganizationRole}"
-      - PolicyName: launch-jobs-allow
+      - PolicyName: write-cloudwatch-logs-allow
         PolicyDocument:
           Statement:
           - Effect: Allow
@@ -522,7 +522,7 @@ Resources:
           STACKSET_NAME: !Ref GuardDutyRecruiterSpokeStackSet
           STACKSET_REGION: !Sub "${AWS::Region}"
       MemorySize: 128
-      Role: !GetAtt GuardDutyRecruiterJobLauncherLambdaRole.Arn
+      Role: !GetAtt GuardDutyRecruiterAccountHarversterLambdaRole.Arn
       Runtime: "python3.7"
       Timeout: 60
       Tags:
