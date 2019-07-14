@@ -2,9 +2,9 @@
 
 ## Introduction
 
-[Amazon GuardDuty](https://aws.amazon.com/guardduty) is a great service which provides threat detection looking for suspicious activity on network flows (VPC and DNS) and CloudTrail messages.
-If the service works on a per account and per region service, but a security account can run as master, gathering all findings in the same region.
-For a single account, GuardDuty can be activated thanks to a one-click. Unfortunately, a master cannot automatically invite members, which generates additional run activity and could create issues for companies working with large numbers of accounts and numbers of different AWS regions.
+[Amazon GuardDuty](https://aws.amazon.com/guardduty) is a great service which provides threat detection looking for suspicious activity on network flows (VPC and DNS) and CloudTrail messages. Activating the service a done thanks to a one-click option.
+GuardDuty works on a per account and per region basis, but a security account can run as master, gathering all findings in the same region.
+Unfortunately, the master cannot automatically activate and invite members at-scale, which generates additional run activity and could create issues for companies working with large numbers of accounts and numbers of different AWS regions.
 That is where GuardDuty Recruiter comes from ...
 
 ## Description
@@ -41,6 +41,7 @@ The system works around two independent Lambdas :
 GuardDuty Recruiter needs :
 - an AWS account running AWS Organizations
 - an AWS account running as a security account to be the GuardDuty master
+- a VPC with at least a subnet capable to join AWS APIs (through NAT Gateway)
 
 ## Installation
 
