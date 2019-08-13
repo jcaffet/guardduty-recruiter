@@ -1,15 +1,16 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Stack providing cross account access for GuardDutyRecruiter
+# Name : guarddutyrecruiter-organizations-role
 
 Parameters:
 
-  GuardDutyRecruiterAccount:
-    Description: GuardDutyRecruiter AWS accountId
+  GuardDutyRecruiterCentralAccount:
+    Description: AWS account ID where GuardDutyRecruiter is installed
     Type: String
     ConstraintDescription: Must be a valid AWS account ID
 
-  GuardDutyRecruiterRoleExternalId:
+  GuardDutyRecruiterOrgRoleExternalId:
     Description: GuardDutyRecruiter Role ExternalID
     Type: String
 
@@ -29,12 +30,12 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            AWS: !Sub 'arn:aws:iam::${GuardDutyRecruiterAccount}:root'
+            AWS: !Sub 'arn:aws:iam::${GuardDutyRecruiterCentralAccount}:root'
           Action:
           - sts:AssumeRole
           Condition:
             StringEquals:
-              "sts:ExternalId": !Sub '${GuardDutyRecruiterRoleExternalId}'
+              "sts:ExternalId": !Sub '${GuardDutyRecruiterOrgRoleExternalId}'
       Policies:
       - PolicyName: "AllowOrganizationListAccounts"
         PolicyDocument:
@@ -48,5 +49,7 @@ Resources:
           Version: "2012-10-17"
           Statement:
           - Effect: "Allow"
-            Action: cloudformation:CreateStackInstances
+            Action:
+            - cloudformation:CreateStackInstances
+            - cloudformation:ListStackInstances
             Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stackset/${GuardDutyRecruiterStackSetSpokeName}:*"
