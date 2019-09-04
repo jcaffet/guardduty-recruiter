@@ -333,7 +333,8 @@ Resources:
                     ORGANIZATION_ROLE = os.environ['ORGANIZATION_ROLE']
                     ORGANIZATION_ROLE_EXTERNALID = os.environ['ORGANIZATION_ROLE_EXTERNALID']
                     ORGANIZATION_ACCOUNT = os.environ['ORGANIZATION_ACCOUNT']
-                    session = get_session(account=ORGANIZATION_ACCOUNT, role=ORGANIZATION_ROLE, externalId=ORGANIZATION_ROLE_EXTERNALID, session_name='guarddutyrecruiter_lambda')
+                    AWS_LAMBDA_FUNCTION_NAME = os.environ['AWS_LAMBDA_FUNCTION_NAME']
+                    session = get_session(account=ORGANIZATION_ACCOUNT, role=ORGANIZATION_ROLE, externalId=ORGANIZATION_ROLE_EXTERNALID, session_name=AWS_LAMBDA_FUNCTION_NAME)
                     accounts = getAllActiveAccounts(session)
                     print("Found %s accounts to recruit." % (len(accounts)))
 
