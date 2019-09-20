@@ -33,7 +33,14 @@ Resources:
   GuardDutyRecruiterEcrRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: !Sub '${GuardDutyRecruiterEcrRepoName}'
+      RepositoryName: !Ref GuardDutyRecruiterEcrRepoName
+      Tags:
+      - Key: Block
+        Value: !Ref TagBlock
+      - Key: App
+        Value: !Ref TagApp
+      - Key: Org
+        Value: !Ref TagOrg
 
 Outputs:
 
@@ -42,4 +49,3 @@ Outputs:
     Value: !GetAtt GuardDutyRecruiterEcrRepository.Arn
     Export:
       Name: !Sub "${AWS::StackName}-EcrRepository"
-
