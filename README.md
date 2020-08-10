@@ -1,5 +1,7 @@
 # GuardDuty Recruiter
 
+**Note : AWS released on Apr 21, 2020 an interesting improvement on [GuardDuty to support AWS Organizations support](https://aws.amazon.com/about-aws/whats-new/2020/04/amazon-guardduty-simplifies-multi-account-threat-detection-with-support-for-aws-organizations). It is now possible to automaticaly apply new accounts as GuardDuty members. Please read [Managing GuardDuty accounts with AWS Organizations](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_organizations.html). This new out-of-the-box feature makes this repository useless. Please note that GuardDuty is still a regional service, it needs to be activated on all used regions.**
+
 ## Introduction
 
 [Amazon GuardDuty](https://aws.amazon.com/guardduty) is a great service which provides threat detection looking for suspicious activity on network flows (VPC and DNS) and CloudTrail messages. Activating the service a done thanks to a one-click option.
